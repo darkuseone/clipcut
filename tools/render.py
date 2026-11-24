@@ -83,8 +83,8 @@ ScaledBorderAndShadow: yes
 
 [V4+ Styles]
 Format: Name, Fontname, Fontsize, PrimaryColour, SecondaryColour, OutlineColour, BackColour, Bold, Italic, Underline, StrikeOut, ScaleX, ScaleY, Spacing, Angle, BorderStyle, Outline, Shadow, Alignment, MarginL, MarginR, MarginV, Encoding
-Style: Word,{font},132,&H00FFFFFF,&H00FFFFFF,&H00000000,&H64000000,0,0,0,0,100,100,1,0,1,9,4,5,40,40,0,1
-Style: Hook,{font},96,&H00000000,&H00000000,&H00FFFFFF,&H00FFFFFF,0,0,0,0,100,100,1,0,3,22,0,5,60,60,0,1
+Style: Word,{font},{spec.get('word_size',150)},&H00FFFFFF,&H00FFFFFF,&H00000000,&H64000000,0,0,0,0,100,100,1,0,1,10,5,5,40,40,0,1
+Style: Hook,{font},{spec.get('hook_size',104)},&H00000000,&H00000000,&H00FFFFFF,&H00FFFFFF,0,0,0,0,100,100,1,0,3,22,0,5,60,60,0,1
 Style: Handle,{font},44,&H40FFFFFF,&H40FFFFFF,&H80000000,&H00000000,0,0,0,0,100,100,1,0,1,3,0,5,40,40,0,1
 
 [Events]
@@ -116,7 +116,7 @@ Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
         s, e = max(s, 0), min(e, dur)
         if e - s < 0.08:
             e = s + 0.08
-        text = w["w"].strip().upper()
+        text = w["w"].strip().upper().rstrip(".,;:").replace("...", "")
         bare = re.sub(r"[^\w']", "", text).lower()
         if not bare:
             continue
@@ -138,12 +138,17 @@ def main():
     sw, sh = probe["width"], probe["height"]
 
     words = []
-    for seg in json.load(open(spec["transcript"])):
+    segs = [] if "words" in spec else json.load(open(spec["transcript"]))
+    if "words" in spec:
+        words = [dict(w) for w in spec["words"]]
+    for seg in segs:
         if seg["end"] < spec["start"] or seg["start"] > spec["end"]:
             continue
         for w in seg["words"]:
             if w["s"] >= spec["start"] - 0.05 and w["s"] < spec["end"]:
                 words.append(w)
+    drop = {float(x) for x in spec.get("drop_words", [])}
+    words = [w for w in words if not any(abs(w["s"] - d) < 0.05 for d in drop)]
     for k, v in spec.get("word_fix", {}).items():
         for w in words:
             if abs(w["s"] - float(k)) < 0.05:
@@ -166,8 +171,16 @@ def main():
         fc += part_filter(i, p, sw, sh)
     fc += "".join(f"[o{i}]" for i in range(len(parts))) + f"concat=n={len(parts)}:v=1:a=0[cat];"
     fc += f"[cat]ass={ass_path}:fontsdir={FONTS}[vout];"
+    # two-pass loudness normalisation to -14 LUFS
+    atr = f"atrim={spec['start']-off:.3f}:{spec['end']-off:.3f},asetpts=PTS-STARTPTS"
+    meas = subprocess.run(["ffmpeg", "-hide_banner", "-i", src, "-af",
+                           atr + ",loudnorm=I=-14:TP=-1.5:LRA=11:print_format=json", "-vn", "-f", "null", "-"],
+                          capture_output=True, text=True).stderr
+    m = json.loads(meas[meas.rfind("{"):meas.rfind("}") + 1])
+    ln = (f"loudnorm=I=-14:TP=-1.5:LRA=11:measured_I={m['input_i']}:measured_TP={m['input_tp']}:"
+          f"measured_LRA={m['input_lra']}:measured_thresh={m['input_thresh']}:offset={m['target_offset']}:linear=true")
     fc += (f"[0:a]atrim={spec['start']-off:.3f}:{spec['end']-off:.3f},asetpts=PTS-STARTPTS,"
-           f"loudnorm=I=-14:TP=-1.5:LRA=11,aresample=48000,"
+           f"{ln},aresample=48000,"
            f"afade=t=out:st={spec['end']-spec['start']-0.15:.3f}:d=0.15[aout]")
     cmd = ["ffmpeg", "-v", "error", "-y", "-i", src, "-filter_complex", fc,
            "-map", "[vout]", "-map", "[aout]", "-c:v", "libx264", "-preset", "medium", "-crf", "18",
