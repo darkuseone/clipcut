@@ -1,0 +1,7 @@
+work/
+*.mp4
+*.mkv
+*.webm
+*.wav
+*.m4a
+__pycache__/
