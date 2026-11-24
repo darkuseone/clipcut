@@ -171,14 +171,20 @@ def main():
         fc += part_filter(i, p, sw, sh)
     fc += "".join(f"[o{i}]" for i in range(len(parts))) + f"concat=n={len(parts)}:v=1:a=0[cat];"
     fc += f"[cat]ass={ass_path}:fontsdir={FONTS}[vout];"
-    # two-pass loudness normalisation to -14 LUFS
+    # two-pass loudness normalisation to -14 LUFS (skipped for multi-segment builds)
     atr = f"atrim={spec['start']-off:.3f}:{spec['end']-off:.3f},asetpts=PTS-STARTPTS"
-    meas = subprocess.run(["ffmpeg", "-hide_banner", "-i", src, "-af",
+    if spec.get("no_loudnorm"):
+        meas = None
+    else:
+        meas = subprocess.run(["ffmpeg", "-hide_banner", "-i", src, "-af",
                            atr + ",loudnorm=I=-14:TP=-1.5:LRA=11:print_format=json", "-vn", "-f", "null", "-"],
                           capture_output=True, text=True).stderr
-    m = json.loads(meas[meas.rfind("{"):meas.rfind("}") + 1])
-    ln = (f"loudnorm=I=-14:TP=-1.5:LRA=11:measured_I={m['input_i']}:measured_TP={m['input_tp']}:"
-          f"measured_LRA={m['input_lra']}:measured_thresh={m['input_thresh']}:offset={m['target_offset']}:linear=true")
+    if meas is None:
+        ln = "anull"
+    else:
+        m = json.loads(meas[meas.rfind("{"):meas.rfind("}") + 1])
+        ln = (f"loudnorm=I=-14:TP=-1.5:LRA=11:measured_I={m['input_i']}:measured_TP={m['input_tp']}:"
+              f"measured_LRA={m['input_lra']}:measured_thresh={m['input_thresh']}:offset={m['target_offset']}:linear=true")
     fc += (f"[0:a]atrim={spec['start']-off:.3f}:{spec['end']-off:.3f},asetpts=PTS-STARTPTS,"
            f"{ln},aresample=48000,"
            f"afade=t=out:st={spec['end']-spec['start']-0.15:.3f}:d=0.15[aout]")
