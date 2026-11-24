@@ -27,6 +27,7 @@ import json, subprocess, sys, os, re
 W, H, FPS = 1080, 1920, 30
 CAM_H = 768            # 40% of 1920
 GAME_H = H - CAM_H     # 1152
+CENSOR = {"nigga": "N*GGA", "nigger": "N*GGA", "motherfuck": "M*THAF*CKIN", "fuck": "F*CK", "bitch": "B*TCH"}
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 FONTS = os.path.join(ROOT, "assets", "fonts")
 
@@ -101,6 +102,10 @@ Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
         ev.append(f"Dialogue: 1,{ass_time(0)},{ass_time(dur)},Handle,,0,0,0,,"
                   f"{{\\pos({W//2},{spec.get('handle_y', 1640)})}}{spec['handle']}")
 
+    for tx in spec.get("texts", []):
+        ev.append(f"Dialogue: 2,{ass_time(tx['t0'])},{ass_time(tx['t1'])},Hook,,0,0,0,,"
+                  f"{{\\pos({W//2},{tx.get('y', 960)})}}{tx['text']}")
+
     def mode_at(t):
         for a, b, m in part_modes:
             if a <= t < b:
@@ -118,6 +123,10 @@ Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
             e = s + 0.08
         text = w["w"].strip().upper().rstrip(".,;:").replace("...", "")
         bare = re.sub(r"[^\w']", "", text).lower()
+        for a, b in CENSOR.items():
+            if bare.startswith(a):
+                text = b
+                break
         if not bare:
             continue
         y = sub_y if mode_at(s) == "split" else sub_y_full
