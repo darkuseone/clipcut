@@ -51,12 +51,13 @@ def crop_to_aspect(box, aspect, cx=None):
 def part_filter(i, p, sw, sh):
     mode = p["mode"]
     if mode == "split":
-        cam = crop_to_aspect(p["cam"], W / CAM_H, p.get("cam_cx"))
+        ch = even(p.get("cam_h", CAM_H)); gh = H - ch
+        cam = crop_to_aspect(p["cam"], W / ch, p.get("cam_cx"))
         g = p.get("game") or [0, 0, sw, sh]
-        game = crop_to_aspect(g, W / GAME_H, p.get("game_cx", g[0] + g[2] / 2))
+        game = crop_to_aspect(g, W / gh, p.get("game_cx", g[0] + g[2] / 2))
         return (f"[v{i}]split[c{i}][g{i}];"
-                f"[c{i}]crop={cam[2]}:{cam[3]}:{cam[0]}:{cam[1]},scale={W}:{CAM_H}:flags=lanczos,setsar=1[ct{i}];"
-                f"[g{i}]crop={game[2]}:{game[3]}:{game[0]}:{game[1]},scale={W}:{GAME_H}:flags=lanczos,setsar=1[gt{i}];"
+                f"[c{i}]crop={cam[2]}:{cam[3]}:{cam[0]}:{cam[1]},scale={W}:{ch}:flags=lanczos,setsar=1[ct{i}];"
+                f"[g{i}]crop={game[2]}:{game[3]}:{game[0]}:{game[1]},scale={W}:{gh}:flags=lanczos,setsar=1[gt{i}];"
                 f"[ct{i}][gt{i}]vstack[o{i}];")
     box = p.get("box") or [0, 0, sw, sh]
     c = crop_to_aspect(box, W / H, p.get("cx"))
