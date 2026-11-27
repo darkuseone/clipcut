@@ -165,6 +165,9 @@ def main():
                 w["w"] = v
     words = [w for w in words if w["w"].strip()]
 
+    # fast input seek: jump close to the clip start, then trim precisely
+    pre = max(0.0, spec["start"] - off - 3.0)
+    off = off + pre
     parts, t = [], spec["start"]
     for p in spec["parts"]:
         to = min(p.get("to", spec["end"]), spec["end"])
@@ -186,7 +189,7 @@ def main():
     if spec.get("no_loudnorm"):
         meas = None
     else:
-        meas = subprocess.run(["ffmpeg", "-hide_banner", "-i", src, "-af",
+        meas = subprocess.run(["ffmpeg", "-hide_banner", "-ss", f"{pre:.3f}", "-i", src, "-af",
                            atr + ",loudnorm=I=-14:TP=-1.5:LRA=11:print_format=json", "-vn", "-f", "null", "-"],
                           capture_output=True, text=True).stderr
     if meas is None:
@@ -198,7 +201,7 @@ def main():
     fc += (f"[0:a]atrim={spec['start']-off:.3f}:{spec['end']-off:.3f},asetpts=PTS-STARTPTS,"
            f"{ln},aresample=48000,"
            f"afade=t=out:st={spec['end']-spec['start']-0.15:.3f}:d=0.15[aout]")
-    cmd = ["ffmpeg", "-v", "error", "-y", "-i", src, "-filter_complex", fc,
+    cmd = ["ffmpeg", "-v", "error", "-y", "-ss", f"{pre:.3f}", "-i", src, "-filter_complex", fc,
            "-map", "[vout]", "-map", "[aout]", "-c:v", "libx264", "-preset", "medium", "-crf", "18",
            "-profile:v", "high", "-pix_fmt", "yuv420p", "-r", str(FPS), "-c:a", "aac", "-b:a", "192k",
            "-movflags", "+faststart", spec["out"]]
